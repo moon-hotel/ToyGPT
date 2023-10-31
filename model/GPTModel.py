@@ -6,14 +6,12 @@ import torch
 
 
 class GPTDecoder(nn.Module):
-    def __init__(self, d_model=512, nhead=8, num_decoder_layers=6, dim_feedforward=2048, dropout=0.1,
-                 ):
+    def __init__(self, d_model=512, nhead=8, num_layers=6, dim_feedforward=2048, dropout=0.1):
         super(GPTDecoder, self).__init__()
 
         """
-        :param d_model:  d_k = d_v = d_model/nhead = 64, 模型中向量的维度，论文默认值为 512
-        :param num_encoder_layers:  encoder堆叠的数量，也就是论文中的N，论文默认值为6
-        :param num_decoder_layers:  decoder堆叠的数量，也就是论文中的N，论文默认值为6
+        :param d_model:  d_k = d_v = d_model/nhead = 64, 模型中向量的维度
+        :param num_layers:  decoder堆叠的数量
         :param dim_feedforward:     全连接中向量的维度，论文默认值为 2048
         :param dropout:             丢弃率，论文中的默认值为 0.1
         """
@@ -21,7 +19,7 @@ class GPTDecoder(nn.Module):
         # ================ 解码部分 =====================
         decoder_layer = MyTransformerDecoderLayer(d_model, nhead, dim_feedforward, dropout)
         decoder_norm = nn.LayerNorm(d_model)
-        self.decoder = MyTransformerDecoder(decoder_layer, num_decoder_layers, decoder_norm)
+        self.decoder = MyTransformerDecoder(decoder_layer, num_layers, decoder_norm)
         self._reset_parameters()
         self.d_model = d_model
         self.nhead = nhead
@@ -37,7 +35,6 @@ class GPTDecoder(nn.Module):
 
     def forward(self, tgt, tgt_mask=None, tgt_key_padding_mask=None):
         """
-        :param src:   [src_len,batch_size,embed_dim]
         :param tgt:  [tgt_len, batch_size, embed_dim]
         :param tgt_mask:  [tgt_len, tgt_len]
         :param tgt_key_padding_mask: [batch_size, tgt_len]
@@ -64,7 +61,7 @@ class MyTransformerDecoderLayer(nn.Module):
     def __init__(self, d_model, nhead, dim_feedforward=2048, dropout=0.1):
         super(MyTransformerDecoderLayer, self).__init__()
         """
-        :param d_model:         d_k = d_v = d_model/nhead = 64, 模型中向量的维度，论文默认值为 512
+        :param d_model:         d_k = d_v = d_model/nhead = 64, 模型中向量的维度
         :param nhead:           多头注意力机制中多头的数量，论文默认为值 8
         :param dim_feedforward: 全连接中向量的维度，论文默认值为 2048
         :param dropout:         丢弃率，论文中的默认值为 0.1    
@@ -83,13 +80,13 @@ class MyTransformerDecoderLayer(nn.Module):
     def forward(self, tgt, tgt_mask=None, key_padding_mask=None):
         """
         :param tgt:  解码部分的输入，形状为 [tgt_len,batch_size, embed_dim]
-        :param memory: 编码部分的输出（memory）, [src_len,batch_size,embed_dim]
         :param tgt_mask: 注意力Mask输入，用于掩盖当前position之后的信息, [tgt_len, tgt_len]
+        :param key_padding_mask: padding掩码 [batch_size, tgt_len]
         :return:
         """
         tgt2 = self.self_attn(tgt, tgt, tgt,  # [tgt_len,batch_size, embed_dim]
                               attn_mask=tgt_mask, key_padding_mask=key_padding_mask)[0]
-        # 解码部分输入序列之间'的多头注意力（也就是论文结构图中的Masked Multi-head attention)
+        # 解码部分输入序列之间'的多头注意力（也就是Masked Multi-head attention)
 
         tgt = tgt + self.dropout1(tgt2)  # 接着是残差连接
         tgt = self.norm1(tgt)  # [tgt_len,batch_size, embed_dim]
@@ -113,6 +110,7 @@ class MyTransformerDecoder(nn.Module):
         """
         :param tgt: 解码部分的输入，形状为 [tgt_len,batch_size, embed_dim]
         :param tgt_mask: 注意力Mask输入，用于掩盖当前position之后的信息, [tgt_len, tgt_len]
+        :param key_padding_mask: padding掩码 [batch_size, tgt_len]
         :return:
         """
         output = tgt  # [tgt_len,batch_size, embed_dim]
@@ -127,7 +125,7 @@ class MyTransformerDecoder(nn.Module):
 
 class MyMultiheadAttention(nn.Module):
     """
-    多头注意力机制的计算公式为（就是论文第5页的公式）：
+    多头注意力机制的计算公式为（就是transformer论文第5页的公式）：
     .. math::
         \text{MultiHead}(Q, K, V) = \text{Concat}(head_1,\dots,head_h)W^O
         \text{where} head_i = \text{Attention}(QW_i^Q, KW_i^K, VW_i^V)
