@@ -1,9 +1,15 @@
-from .MyTransformer import MyTransformerDecoderLayer
-from .MyTransformer import MyTransformerDecoder
-from .MyTransformer import GPTDecoder
+from .GPTModel import MyTransformerDecoderLayer
+from .GPTModel import MyTransformerDecoder
+from .GPTModel import GPTDecoder
+from .GPTModel import GPTModel
+from .GPTModel import GPTLMHeadModel
+from .GPTForSequenceClassification import GPTForSequenceClassification
 
 __all__ = [
     "MyTransformerDecoderLayer",
     "MyTransformerDecoder",
-    "GPTDecoder"
+    "GPTDecoder",
+    "GPTModel",
+    "GPTLMHeadModel",
+    "GPTForSequenceClassification"
 ]

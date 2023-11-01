@@ -5,14 +5,73 @@ import copy
 import torch
 
 
+class GPTLMHeadModel(nn.Module):
+    """
+    预训练语言模型
+    """
+    def __init__(self, config=None):
+        super().__init__()
+        self.transformer = GPTModel(config)
+        self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
+
+    def forward(self, input_ids=None, position_ids=None, key_padding_mask=None, labels=None):
+        """
+        :param input_ids: [tgt_len, batch_size]
+        :param position_ids:
+        :param key_padding_mask: [batch_size, tgt_len]
+        :param labels: [tgt_len,batch_size]
+        :return:
+        """
+        output = self.transformer(input_ids=input_ids, position_ids=position_ids,
+                                  key_padding_mask=key_padding_mask)  # [tgt_len, batch_size, n_embd]
+        lm_logits = self.lm_head(output).transpose(0, 1)  # [batch_size, tgt_len, vocab_size]
+        shift_logits = lm_logits[:, :-1].contiguous()  # [batch_size, tgt_len-1, vocab_size]
+        shift_labels = labels.transpose(0, 1)[:, 1:].contiguous()  # [batch_size, tgt_len-1]
+        loss_fct = nn.CrossEntropyLoss()
+        loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
+        return loss
+
+
+class GPTModel(nn.Module):
+    def __init__(self, config=None):
+        super().__init__()
+        self.token_embed = nn.Embedding(config.n_positions, config.n_embd)
+        self.position_embed = nn.Embedding(config.vocab_size, config.n_embd)
+        self.register_buffer("position_ids",
+                             torch.arange(config.n_positions).expand((1, -1)))
+        self.drop = nn.Dropout(config.dropout)
+        self.gpt_decoder = GPTDecoder(config.n_embd, config.n_head, config.n_layer,
+                                      config.dim_feedforward, config.dropout)
+
+    def forward(self, input_ids=None, position_ids=None, key_padding_mask=None):
+        """
+        :param input_ids: [tgt_len, batch_size]
+        :param position_ids: 位置序列，本质就是 [0,1,2,3,...,src_len-1], shape: [1,tgt_len]
+        :param key_padding_mask: [batch_size, tgt_len]
+        :return:
+        """
+        tgt_len = input_ids.size(0)
+        token_embedding = self.token_embed(input_ids)  # [tgt_len, batch_size, n_embd]
+        if position_ids is None:  # 在实际建模时这个参数其实可以不用传值
+            position_ids = self.position_ids[:, :tgt_len]  # [1,tgt_len]
+        position_embedding = self.position_embed(position_ids).transpose(0, 1)  # [tgt_len, 1, n_embd]
+        embeddings = token_embedding + position_embedding  # [tgt_len, batch_size, n_embd]
+        hidden_states = self.drop(embeddings)
+        tgt_mask = self.gpt_decoder.generate_square_subsequent_mask(tgt_len)  # [tgt_len, tgt_len]
+        output = self.gpt_decoder(tgt=hidden_states, tgt_mask=tgt_mask,
+                                  key_padding_mask=key_padding_mask)
+        return output  # [tgt_len, batch_size, n_head * head_dim] <==> [tgt_len,batch_size,n_embd]
+
+
 class GPTDecoder(nn.Module):
     def __init__(self, d_model=512, nhead=8, num_layers=6, dim_feedforward=2048, dropout=0.1):
         super(GPTDecoder, self).__init__()
 
         """
         :param d_model:  d_k = d_v = d_model/nhead = 64, 模型中向量的维度
+        :param nhead:  多头数量
         :param num_layers:  decoder堆叠的数量
-        :param dim_feedforward:     全连接中向量的维度，论文默认值为 2048
+        :param dim_feedforward:     全连接中向量的维度
         :param dropout:             丢弃率，论文中的默认值为 0.1
         """
 
@@ -33,15 +92,15 @@ class GPTDecoder(nn.Module):
             if p.dim() > 1:
                 xavier_uniform_(p)
 
-    def forward(self, tgt, tgt_mask=None, tgt_key_padding_mask=None):
+    def forward(self, tgt, tgt_mask=None, key_padding_mask=None):
         """
         :param tgt:  [tgt_len, batch_size, embed_dim]
         :param tgt_mask:  [tgt_len, tgt_len]
-        :param tgt_key_padding_mask: [batch_size, tgt_len]
+        :param key_padding_mask: [batch_size, tgt_len]
         :return: [tgt_len, batch_size, num_heads * kdim] <==> [tgt_len,batch_size,embed_dim]
         """
         output = self.decoder(tgt=tgt, tgt_mask=tgt_mask,
-                              key_padding_mask=tgt_key_padding_mask)
+                              key_padding_mask=key_padding_mask)
         return output  # [tgt_len, batch_size, num_heads * kdim] <==> [tgt_len,batch_size,embed_dim]
 
     def generate_square_subsequent_mask(self, sz):
@@ -134,8 +193,8 @@ class MyMultiheadAttention(nn.Module):
     def __init__(self, embed_dim, num_heads, dropout=0., bias=True):
         super(MyMultiheadAttention, self).__init__()
         """
-        :param embed_dim:   词嵌入的维度，也就是前面的d_model参数，论文中的默认值为512
-        :param num_heads:   多头注意力机制中多头的数量，也就是前面的nhead参数， 论文默认值为 8
+        :param embed_dim:   词嵌入的维度，也就是前面的d_model参数
+        :param num_heads:   多头注意力机制中多头的数量，也就是前面的nhead参数
         :param dropout:     
         :param bias:        最后对多头的注意力（组合）输出进行线性变换时，是否使用偏置
         """
