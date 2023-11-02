@@ -8,7 +8,6 @@ class GPTForSequenceClassification(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.num_labels = config.num_labels
-        self.transformer = GPTModel(config)
         self.lm_model = GPTLMHeadModel(config)
         self.classifier = torch.nn.Linear(config.n_embd, config.num_labels)
         self.config = config
@@ -18,8 +17,7 @@ class GPTForSequenceClassification(nn.Module):
                 key_padding_mask=None,
                 position_ids=None,
                 labels=None):
-        last_states = self.transformer(input_ids, position_ids=position_ids,
-                                       key_padding_mask=key_padding_mask)  # [tgt_len, batch_size, n_embd]
+        lm_loss, last_states = self.lm_model(input_ids, position_ids, key_padding_mask, input_ids)
         logits = self.classifier(last_states).transpose(0, 1)  # [batch_size, tgt_len, num_labels]
         # 因为这里要取每个序列最后一个位置上的logits，但是输入多个样本时会有padding的情况
         # 因此需要找到真实的最后一个位置
@@ -34,8 +32,6 @@ class GPTForSequenceClassification(nn.Module):
             loss_fct = nn.CrossEntropyLoss()  # 因为已经取了最后一个位置上的向量，所以不用忽略padding位置上的损失
             loss = loss_fct(pooled_logits.view(-1, self.num_labels), labels.view(-1))
             if self.config.use_multi_loss:
-                lm_loss = self.lm_model(input_ids, key_padding_mask=key_padding_mask, labels=input_ids)
-                print(lm_loss)
                 loss += self.config.lamb * lm_loss
             return loss, pooled_logits  # [batch_size, num_labels]
         else:

@@ -19,5 +19,6 @@ if __name__ == '__main__':
     config = Config()
     model = GPTLMHeadModel(config)
     tgt = torch.randint(0, 100, [5, 2])  # [tgt_len, batch_size]
-    output = model(tgt, labels=tgt)
+    output,last_state = model(tgt, labels=tgt)
     print(output)
+    print(last_state.shape)

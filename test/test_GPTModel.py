@@ -18,7 +18,7 @@ class Config(object):
 if __name__ == '__main__':
     config = Config()
     model = GPTModel(config)
-    tgt = torch.randint(0, 100, [2, 5]).transpose(0, 1)  # [tgt_len, batch_size]
+    tgt = torch.randint(0, 100, [5, 2]) # [tgt_len, batch_size]
     key_padding_mask = torch.tensor([[False, False, False, False, True],
                                      [False, False, False, True, True]])
     output = model(tgt, key_padding_mask=key_padding_mask)

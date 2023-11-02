@@ -9,6 +9,7 @@ class GPTLMHeadModel(nn.Module):
     """
     预训练语言模型
     """
+
     def __init__(self, config=None):
         super().__init__()
         self.transformer = GPTModel(config)
@@ -22,14 +23,14 @@ class GPTLMHeadModel(nn.Module):
         :param labels: [tgt_len,batch_size]
         :return:
         """
-        output = self.transformer(input_ids=input_ids, position_ids=position_ids,
+        last_state = self.transformer(input_ids=input_ids, position_ids=position_ids,
                                   key_padding_mask=key_padding_mask)  # [tgt_len, batch_size, n_embd]
-        lm_logits = self.lm_head(output).transpose(0, 1)  # [batch_size, tgt_len, vocab_size]
+        lm_logits = self.lm_head(last_state).transpose(0, 1)  # [batch_size, tgt_len, vocab_size]
         shift_logits = lm_logits[:, :-1].contiguous()  # [batch_size, tgt_len-1, vocab_size]
         shift_labels = labels.transpose(0, 1)[:, 1:].contiguous()  # [batch_size, tgt_len-1]
         loss_fct = nn.CrossEntropyLoss()
         loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
-        return loss
+        return loss, last_state
 
 
 class GPTModel(nn.Module):
@@ -46,7 +47,7 @@ class GPTModel(nn.Module):
     def forward(self, input_ids=None, position_ids=None, key_padding_mask=None):
         """
         :param input_ids: [tgt_len, batch_size]
-        :param position_ids: 位置序列，本质就是 [0,1,2,3,...,src_len-1], shape: [1,tgt_len]
+        :param position_ids: 位置序列，本质就是 [0,1,2,3,...,tgt_len-1], shape: [1,tgt_len]
         :param key_padding_mask: [batch_size, tgt_len]
         :return:
         """
